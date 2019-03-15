@@ -1,0 +1,12 @@
+[Download]
+# your face2gene account and password
+user =
+password =
+# the folder to save all the photo and meta data
+data_path = data
+# the folder to save the data in data folder you specify above
+project_name = pedia
+# input_path: JSON files of PEDIA cohort, please use LAB api
+# to download or contact Tzung-Chien Hsieh if you don't have
+# credential
+input_path = pedia
