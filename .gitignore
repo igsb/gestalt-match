@@ -1,0 +1,14 @@
+# ignore logs
+*.log
+
+# ignore npy files and json
+*.json
+*.npy
+
+# ignore data folder
+data
+
+# ignore photo
+*.png
+*.jpg
+*.svg
