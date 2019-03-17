@@ -1,11 +1,17 @@
-#!/usr/bin/env python3
-
+#!/usr/bin/env python2
+import argparse
 import numpy as np
 import csv
 import pandas as pd
 import os
 import shutil
 import json
+import sys
+sys.path.append('../insightface/deploy')
+import face_model
+import cv2
+import configparser
+import logging
 
 def genomic_data_genes(data):
     genes = []
@@ -125,7 +131,6 @@ def load_df(summary_file):
 
     df = df_input.loc[df_input.apply(check, axis=1)]
     return df
-
 def copy_photo_to_working_dir(df, working_dir):
     if not os.path.exists(working_dir):
         os.makedirs(working_dir)
@@ -138,16 +143,83 @@ def copy_photo_to_working_dir(df, working_dir):
 
         
 def main():
+    '''
+    To use arcface to fetch the embeddings, please run the following commad
+    python2.7 arc_face.py --model ../insightface/models/model-r100-ii/model,0000
+    --ga-model ../insightface/models/model-r100-ii/model,0000
+    '''
+    parser = argparse.ArgumentParser(description='face model test')
+    parser.add_argument('--image-size', default='112,112', help='')
+    parser.add_argument('--model', default='', help='path to load model.')
+    parser.add_argument('--ga-model', default='', help='path to load model.')
+    parser.add_argument('--gpu', default=0, type=int, help='gpu id')
+    parser.add_argument('--det', default=0, type=int, help='mtcnn option, 1 means using R+O, 0 means detect from begining')
+    parser.add_argument('--flip', default=0, type=int, help='whether do lr flip aug')
+    parser.add_argument('--threshold', default=1.24, type=float, help='ver dist threshold')
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        filename=os.path.join('log/arcface.log'),
+        filemode='w',
+        format='%(asctime)s: %(levelname)s - %(message)s',
+        datefmt='%d-%b-%y %H:%M:%S'
+    )
+
     config = configparser.ConfigParser()
     config.read('config.ini')
     working_dir = os.path.join(config['Download']['data_path'],
                                config['Download']['project_name'],
-                               'working/photo')
+                               'working/align_112')
     sum_file = os.path.join(config['Download']['data_path'],
                             config['Download']['project_name'],
                             'photo_summary.csv')
+    arc_dir = os.path.join(config['Download']['data_path'],
+                          config['Download']['project_name'],
+                          'working/arcface')
+    if not os.path.exists(arc_dir):
+        os.makedirs(arc_dir)
+    emb_dir = os.path.join(arc_dir, 'embeddings')
+    if not os.path.exists(emb_dir):
+        os.makedirs(emb_dir)
+
     df = load_df(sum_file)
-    copy_photo_to_working_dir(df, working_dir)
+    model = face_model.FaceModel(args)
+    count = 0
+    feature = np.array([]).reshape(0, 512)
+    label = np.array([]).reshape(0, 1)
+    err_count = 0
+    for pic_path in os.listdir(working_dir):
+        print(pic_path)
+        pic_dir = os.path.join(working_dir, pic_path)
+        if not os.path.isdir(pic_dir):
+            continue
+        if len(os.listdir(pic_dir)) == 0:
+            continue
+        name = os.listdir(pic_dir)[0]
+        pic_file = os.path.join(pic_dir, name)
+        img = cv2.imread(pic_file)
+        #img = cv2.imread('../insightface/deploy/Tom_Hanks_54745.png')
+        #img = cv2.imread('data/pedia/working/align_112/101329_136767/101329_136767.png')
+
+        img = model.get_input(img)
+        try: 
+            f1 = model.get_feature(img)
+        except Exception:
+            logging.error('Arcface can not process photo: ' + pic_path)
+            err_count += 1
+            continue
+        np.save(os.path.join(emb_dir, pic_path + '.npy'), f1)
+        feature = np.vstack([feature, [f1]])
+        label = np.append(label, pic_path.encode("utf-8"))
+        count += 1
+
+    np.save(os.path.join(arc_dir, 'label.npy'), label)
+    np.save(os.path.join(arc_dir, 'embeddings.npy'), feature)
+    print('Arcface processed %d photos sucessfully.' % count)
+    print('Arcface can not processed %d photos sucessfully.' % err_count)
+    print(feature.shape)
+    print(label)
+
 
 if __name__ == '__main__':
     main()
